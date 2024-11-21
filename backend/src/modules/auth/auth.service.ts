@@ -37,6 +37,7 @@ import {
 } from "../../mailers/templates/template";
 import { HTTPSTATUS } from "../../config/http.config";
 import { hashValue } from "../../common/utils/bcrypt";
+import { logger } from "../../common/utils/logger";
 
 export class AuthService {
   public async register(registerData: RegisterDto) {
@@ -81,11 +82,13 @@ export class AuthService {
   public async login(loginData: LoginDto) {
     const { email, password, userAgent } = loginData;
 
+    logger.info(`Login attempt for email: ${email}`);
     const user = await UserModel.findOne({
       email: email,
     });
 
     if (!user) {
+      logger.warn(`Login failed: User with email ${email} not found`);
       throw new BadRequestException(
         "Invalid email or password provided",
         ErrorCode.AUTH_USER_NOT_FOUND
@@ -94,6 +97,7 @@ export class AuthService {
 
     const isPasswordValid = await user.comparePassword(password);
     if (!isPasswordValid) {
+      logger.warn(`Login failed: Invalid password for email: ${email}`);
       throw new BadRequestException(
         "Invalid email or password provided",
         ErrorCode.AUTH_USER_NOT_FOUND
@@ -102,6 +106,7 @@ export class AuthService {
 
     // Check if the user enable 2fa retuen user= null
     if (user.userPreferences.enable2FA) {
+      logger.info(`2FA required for user ID: ${user._id}`);
       return {
         user: null,
         mfaRequired: true,
@@ -110,11 +115,13 @@ export class AuthService {
       };
     }
 
+    logger.info(`Creating session for user ID: ${user._id}`);
     const session = await SessionModel.create({
       userId: user._id,
       userAgent,
     });
 
+    logger.info(`Signing tokens for user ID: ${user._id}`);
     const accessToken = signJwtToken({
       userId: user._id,
       sessionId: session._id,
@@ -127,6 +134,7 @@ export class AuthService {
       refreshTokenSignOptions
     );
 
+    logger.info(`Login successful for user ID: ${user._id}`);
     return {
       user,
       accessToken,
